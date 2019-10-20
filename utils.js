@@ -10,7 +10,7 @@
  * Copyright (c) 2019 Kideasoft Tech Co.,Ltd
  */
 const { crc16modbus } = require('crc');
-const { CMD, FUNC_CODE } = require('./config');
+const { CMD, CMD_QUEUE, FUNC_CODE } = require('./config');
 
 
 function getCrc(str) {
@@ -37,6 +37,12 @@ function crcCheck(msg) {
   const data = msg.slice(0, msg.length - 4);
   const crc = msg.slice(msg.length - 4, msg.length);
   return crc === getCrc(data);
+}
+
+function getNextCmd(clientId, currentCmd) {
+  if (!currentCmd) return addCrc16(`${clientId}${CMD_QUEUE[0]}`);
+  const index = CMD_QUEUE.findIndex((e) => e === currentCmd);
+  return addCrc16(`${clientId}${CMD_QUEUE[index]}`) || addCrc16(`${clientId}${CMD_QUEUE[0]}`);
 }
 
 function decodeMsg(msg) {
@@ -80,4 +86,5 @@ module.exports = {
   crcCheck,
   openWell,
   closeWell,
+  getNextCmd,
 };

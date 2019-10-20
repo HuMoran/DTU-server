@@ -24,6 +24,19 @@ const CMD = {
   DELETE_ALARM: '0700040001', // 删除报警事件
 };
 
+// 定时发送命令的队列
+const CMD_QUEUE = [
+  CMD.SYSTEM_STATUS,
+  CMD.SYSTEM_EVENT,
+  CMD.DELETE_EVENT,
+  CMD.ACTION_LOG,
+  CMD.DELETE_ACTION,
+  CMD.SCHEDULE_LOG,
+  CMD.DELETE_SCHEDULE,
+  CMD.ALARM_LOG,
+  CMD.DELETE_ALARM,
+];
+
 const FUNC_CODE = {
   SYSTEM_INFO: '03', // 整定请求 读取内部保持寄存器的值(系统配置信息)
   SYSTEM_STATUS: '04', // AI/PI请求 读取输入寄存器的值(系统实时状态)
@@ -34,5 +47,6 @@ const FUNC_CODE = {
 
 module.exports = {
   CMD,
+  CMD_QUEUE,
   FUNC_CODE,
 };

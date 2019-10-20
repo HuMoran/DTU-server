@@ -12,29 +12,40 @@
 
 const net = require('net');
 const { crc16modbus } = require('crc');
-const { addCrc16 } = require('./utils');
+const { addCrc16, getNextCmd } = require('./utils');
+const { CMD_QUEUE } = require('./config');
+
+const CLIENT_KEY = '02010001';
+
 
 const server = net.createServer();
-server.on('connection', (c) => {
+server.on('connection', (client) => {
   console.log('new connection');
-  const cmd = addCrc16('01050000FF00'); // 开井
-  // const cmd = addCrc16('01040000000e'); // 系统状态
-  // const cmd = addCrc16('010400640005'); // 系统事件
-  // const cmd = addCrc16('010400c80015'); // 日动作记录
-  // const cmd = addCrc16('010401900008'); // 定时记录
-  // const cmd = addCrc16('010401f40004'); // 报警记录
-  // const cmd = addCrc16('010700020001'); // 删除动作事件
+  let clientStatus = false;
+  let clientId;
+  let cmd;
+  let userCmd;
 
-  // setInterval(() => {
-  //   const ret = c.write(cmd);
-  //   console.log('send cmd:', cmd.toString('hex'), ret);
-  // }, 3000);
-
-  c.on('end', () => {
-    console.log('client end');
+  client.on('data', (buf) => {
+    console.log('client msg:', buf.toString('hex'));
+    const msg = buf.toString('hex');
+    if (!clientStatus && msg !== CLIENT_KEY) {
+      client.destroy();
+      return;
+    }
+    if (!clientStatus && msg === CLIENT_KEY) {
+      clientStatus = true;
+      clientId = msg.slice(2, 4);
+      cmd = getNextCmd(clientId, userCmd || cmd);
+      const ret = client.write(cmd);
+      if (!ret) {
+        console.error('cmd send error:', cmd.toString('hex'), ret);
+      }
+    }
   });
-  c.on('data', (msg) => {
-    console.log('client msg:', msg.toString('hex'));
+
+  client.on('close', () => {
+    clientStatus = false;
   });
 });
 // 010410
