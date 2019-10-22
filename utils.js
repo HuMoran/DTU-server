@@ -10,7 +10,7 @@
  * Copyright (c) 2019 Kideasoft Tech Co.,Ltd
  */
 const { crc16modbus } = require('crc');
-const { CMD, CMD_QUEUE, FUNC_CODE } = require('./config');
+const { cmdConfig, CMD_QUEUE } = require('./config');
 
 
 function getCrc(str) {
@@ -32,6 +32,7 @@ function addCrc16(cmd) {
 
 function crcCheck(msg) {
   if (!msg || msg.length < 8) {
+    console.log('crc check failed:', msg);
     return false;
   }
   const data = msg.slice(0, msg.length - 4);
@@ -39,47 +40,16 @@ function crcCheck(msg) {
   return crc === getCrc(data);
 }
 
-function getNextCmd(clientId, currentCmd) {
-  if (!currentCmd) return addCrc16(`${clientId}${CMD_QUEUE[0]}`);
-  const index = CMD_QUEUE.findIndex((e) => e === currentCmd);
-  return addCrc16(`${clientId}${CMD_QUEUE[index]}`) || addCrc16(`${clientId}${CMD_QUEUE[0]}`);
-}
-
-function decodeMsg(msg) {
-  const result = {
-    devId: '',
-    funcCode: '',
-    address: '',
-    data: '',
-  };
-
-  result.devId = msg.slice(0, 2);
-  result.funcCode = msg.slice(2, 4);
-  switch (result.funcCode) {
-    case FUNC_CODE.SYSTEM_INFO: // 系统配置信息
-      break;
-    case FUNC_CODE.SYSTEM_STATUS: // 系统实时状态和事件记录
-      break;
-    case FUNC_CODE.WELL_STATUS: { // 开关井返回
-      result.address = msg.slice(4, 8);
-      result.data = msg.slice(8, 12);
-      break;
-    }
-    case FUNC_CODE.WRITE_SINGLE:
-      break;
-    case FUNC_CODE.WRITE_MULTI:
-      break;
-    default:
-      break;
-  }
-
-  return result;
+function getNextCmd(currentCmd) {
+  if (!currentCmd) return CMD_QUEUE[0];
+  const index = CMD_QUEUE.findIndex((e) => e.cmd === currentCmd);
+  return CMD_QUEUE[index + 1] || CMD_QUEUE[0];
 }
 
 // 开井
-const openWell = (devId) => addCrc16(`${devId}${CMD.OPEN_WELL}`);
+const openWell = (devId) => addCrc16(`${devId}${cmdConfig.open_well.cmd}`);
 // 关井
-const closeWell = (devId) => addCrc16(`${devId}${CMD.CLOSE_WELL}`);
+const closeWell = (devId) => addCrc16(`${devId}${cmdConfig.close_well.cmd}`);
 
 module.exports = {
   addCrc16,

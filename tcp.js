@@ -13,7 +13,7 @@
 const net = require('net');
 const { crc16modbus } = require('crc');
 const { addCrc16, getNextCmd } = require('./utils');
-const { CMD_QUEUE } = require('./config');
+const { cmdConfig } = require('./config');
 
 const CLIENT_KEY = '02010001';
 
@@ -23,8 +23,9 @@ server.on('connection', (client) => {
   console.log('new connection');
   let clientStatus = false;
   let clientId;
-  let cmd;
+  let curCmd;
   let userCmd;
+  let sendCmd;
 
   client.on('data', (buf) => {
     console.log('client msg:', buf.toString('hex'));
@@ -36,11 +37,28 @@ server.on('connection', (client) => {
     if (!clientStatus && msg === CLIENT_KEY) {
       clientStatus = true;
       clientId = msg.slice(2, 4);
-      cmd = getNextCmd(clientId, userCmd || cmd);
-      const ret = client.write(cmd);
+      sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
+      curCmd = userCmd ? curCmd : sendCmd;
+
+      const cmdBuf = addCrc16(`${clientId}${sendCmd.cmd}`);
+      const ret = client.write(cmdBuf);
       if (!ret) {
-        console.error('cmd send error:', cmd.toString('hex'), ret);
+        console.error('cmd send error:', cmdBuf.toString('hex'), ret);
       }
+      return;
+    }
+    // 解析消息
+    const result = (userCmd || curCmd).decoder(msg);
+    userCmd = '';
+    console.log('result:', result);
+
+    sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
+    curCmd = userCmd ? curCmd : sendCmd;
+    console.log('sendCmd:', sendCmd);
+    const cmdBuf = addCrc16(`${clientId}${sendCmd.cmd}`);
+    const ret = client.write(cmdBuf);
+    if (!ret) {
+      console.error('cmd send error:', cmdBuf.toString('hex'), ret);
     }
   });
 
