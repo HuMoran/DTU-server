@@ -27,47 +27,58 @@ const helper = require('./helper');
 // };
 
 const cmdConfig = {
-  open_well: { // 开井
+  openWell: { // 开井
+    name: 'openWell',
     cmd: '050000FF00',
     decoder: helper.openWell,
   },
-  close_well: {
+  closeWell: {
+    name: 'closeWell',
     cmd: '0500000000', // 开井
     decoder: helper.closeWell,
   },
-  system_status: {
+  systemStatus: {
+    name: 'systemStatus',
     cmd: '040000000e', // 当前系统所有状态
     decoder: helper.systemStatus,
   },
-  system_event: {
+  systemEvent: {
+    name: 'systemEvent',
     cmd: '0400640005', // 系统事件
     decoder: helper.systemEvent,
   },
-  action_log: {
+  actionLog: {
+    name: 'actionLog',
     cmd: '0400c80015', // 日动作记录
     decoder: helper.actionLog,
   },
-  schedule_log: {
+  scheduleLog: {
+    name: 'scheduleLog',
     cmd: '0401900008', // 定时记录
     decoder: helper.scheduleLog,
   },
-  alarm_log: {
+  alarmLog: {
+    name: 'alarmLog',
     cmd: '0401f40004', // 报警记录
     decoder: helper.alarmLog,
   },
-  delete_event: {
+  deleteEvent: {
+    name: 'deleteEvent',
     cmd: '0700010001', // 删除系统事件
     decoder: helper.deleteEvent,
   },
-  delete_action: {
+  deleteAction: {
+    name: 'deleteAction',
     cmd: '0700020001', // 删除动作事件
     decoder: helper.deleteAction,
   },
-  delete_schedule: {
+  deleteSchedule: {
+    name: 'deleteSchedule',
     cmd: '0700030001', // 删除定时事件
     decoder: helper.deleteSchedule,
   },
-  delete_alarm: {
+  deleteAlarm: {
+    name: 'deleteAlarm',
     cmd: '0700040001', // 删除报警事件
     decoder: helper.deleteAlarm,
   },
@@ -75,15 +86,15 @@ const cmdConfig = {
 
 // 定时发送命令的队列
 const CMD_QUEUE = [
-  (cmdConfig.system_status),
-  cmdConfig.system_event,
-  cmdConfig.delete_event,
-  cmdConfig.action_log,
-  cmdConfig.delete_action,
-  cmdConfig.schedule_log,
-  cmdConfig.delete_schedule,
-  cmdConfig.alarm_log,
-  cmdConfig.delete_alarm,
+  cmdConfig.systemStatus,
+  cmdConfig.systemEvent,
+  cmdConfig.deleteEvent,
+  cmdConfig.actionLog,
+  cmdConfig.deleteAction,
+  cmdConfig.scheduleLog,
+  cmdConfig.deleteSchedule,
+  cmdConfig.alarmLog,
+  cmdConfig.deleteAlarm,
 ];
 
 const FUNC_CODE = {

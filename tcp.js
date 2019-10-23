@@ -13,7 +13,7 @@
 const net = require('net');
 const { crc16modbus } = require('crc');
 const { addCrc16, getNextCmd } = require('./utils');
-const { cmdConfig } = require('./config');
+const { CMD_QUEUE } = require('./config');
 
 const CLIENT_KEY = '02010001';
 
@@ -26,9 +26,10 @@ server.on('connection', (client) => {
   let curCmd;
   let userCmd;
   let sendCmd;
+  let isRestTime = false;
 
   client.on('data', (buf) => {
-    console.log('client msg:', buf.toString('hex'));
+    if (isRestTime) return;
     const msg = buf.toString('hex');
     if (!clientStatus && msg !== CLIENT_KEY) {
       client.destroy();
@@ -50,15 +51,28 @@ server.on('connection', (client) => {
     // 解析消息
     const result = (userCmd || curCmd).decoder(msg);
     userCmd = '';
-    console.log('result:', result);
+    console.log('cmd name: ', sendCmd.name);
+    console.log('return: ', result);
+
 
     sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
     curCmd = userCmd ? curCmd : sendCmd;
-    console.log('sendCmd:', sendCmd);
     const cmdBuf = addCrc16(`${clientId}${sendCmd.cmd}`);
-    const ret = client.write(cmdBuf);
-    if (!ret) {
-      console.error('cmd send error:', cmdBuf.toString('hex'), ret);
+    if (sendCmd.cmd === CMD_QUEUE[0].cmd) {
+      console.log('命令队列执行完成，等待5秒开始下一轮');
+      isRestTime = true;
+      setTimeout(() => {
+        isRestTime = false;
+        const ret = client.write(cmdBuf);
+        if (!ret) {
+          console.error('cmd send error:', cmdBuf.toString('hex'), ret);
+        }
+      }, 5000);
+    } else {
+      const ret = client.write(cmdBuf);
+      if (!ret) {
+        console.error('cmd send error:', cmdBuf.toString('hex'), ret);
+      }
     }
   });
 
