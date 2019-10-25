@@ -213,6 +213,53 @@ function deleteAlarm(msg) {
   return msg.includes('0700040001');
 }
 
+function setTimeMode(msg) {
+  return msg.includes('1000c9001c0070');
+}
+
+// 配置时间模式
+function getTimeModeData(timeModeParam) {
+  const {
+    up = 0, // 上升时间 单位秒
+    continueTime = 0, // 续流时间
+    // eslint-disable-next-line no-shadow
+    closeWell = 0, // 关井时间
+    target = 0, // 目标时间
+    targetRange = 0, // 目标时间范围
+    minOpenWell = 0, // 最小开井时间
+    maxOpenWell = 0, // 最大开井时间
+    minCloseWell = 0, // 最小关井时间
+    maxCloseWell = 0, // 最大关井时间
+    unArrivedCloseWell = 0, // 未到达关井时间
+    continueIncrease = 0, // 续流增加时间
+    continueDecrease = 0, // 续流减少时间
+    closeWellIncrease = 0, // 关井增加时间
+    closeWellDecrease = 0, // 关井减少时间
+  } = timeModeParam;
+
+  const parmArr = [
+    up,
+    continueTime,
+    closeWell,
+    target,
+    targetRange,
+    minOpenWell,
+    maxOpenWell,
+    minCloseWell,
+    maxCloseWell,
+    unArrivedCloseWell,
+    continueIncrease,
+    continueDecrease,
+    closeWellIncrease,
+    closeWellDecrease,
+  ];
+
+  const data = parmArr.reduce((r, s) => r + s.toString(16).padStart(8, '0'), '');
+  const dataLen = data.length.toString(16).padStart(2, '0');
+  const paramLen = (parmArr.length * 2).toString(16).padStart(4, '0');
+  return `1000c9${paramLen}${dataLen}${data}`;
+}
+
 module.exports = {
   openWell,
   closeWell,
@@ -225,4 +272,6 @@ module.exports = {
   deleteAction,
   deleteSchedule,
   deleteAlarm,
+  setTimeMode,
+  getTimeModeData,
 };
