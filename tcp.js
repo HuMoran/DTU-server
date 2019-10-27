@@ -40,13 +40,14 @@ server.on('connection', (client) => {
   console.log('new connection:', client.remoteAddress);
   let isNewClient = true;
   let serialNo;
-  let clientId;
+  let devId;
   let curCmd;
   let sendCmd;
   let userCmd;
 
   client.on('data', (buf) => {
     const msg = buf.toString('hex');
+    console.debug('****client msg:', msg);
     if (isNewClient) { // 新客户端，解析消息头，获取设备信息
       const clientInfo = decodeClientHeader(msg);
       if (!clientInfo) {
@@ -54,9 +55,10 @@ server.on('connection', (client) => {
         client.destroy();
         return;
       }
+      console.log('认证成功：', client.remoteAddress);
       isNewClient = false;
       serialNo = clientInfo.serialNo;
-      clientId = clientInfo.clientId;
+      devId = clientInfo.devId;
       clients[clientInfo.serialNo] = {
         ...clientInfo,
         ip: client.remoteAddress,
@@ -67,7 +69,7 @@ server.on('connection', (client) => {
       // 新Client，取轮询命令队列
       sendCmd = getNextCmd();
       curCmd = sendCmd;
-      const cmdBuf = addCrc16(`${clientId}${sendCmd.cmd}`);
+      const cmdBuf = addCrc16(`${devId}${sendCmd.cmd}`);
       const ret = client.write(cmdBuf);
       if (!ret) {
         console.error('cmd send error:', cmdBuf.toString('hex'), ret);
@@ -82,18 +84,20 @@ server.on('connection', (client) => {
     }
 
     // 解析消息
-    const result = (userCmd || curCmd).decoder(msg);
+    const result = sendCmd.decoder(msg);
     // TODO: seng msg to others;
-    console.log(`[${serialNo} | cmd name: ${sendCmd.name}`);
-    console.log(`[${serialNo} |return: ${result}`);
+    console.log(`[${serialNo}] | cmd name: ${sendCmd.name}`);
+    console.log(`[${serialNo}] |return: ${JSON.stringify(result)}`);
 
     // 下一轮消息发送，先取用户命令队列，如果没有，再取轮询命令队列
     userCmd = clients[serialNo].userCmd.shift();
     sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
     curCmd = userCmd ? curCmd : sendCmd;
-    const cmdBuf = addCrc16(`${clientId}${sendCmd.cmd}`);
+    const cmdBuf = addCrc16(`${devId}${sendCmd.cmd}`);
+    console.log('======send msg:', cmdBuf.toString('hex'));
+
     if (sendCmd.cmd === CMD_QUEUE[0].cmd) {
-      console.log(`[${serialNo} | 命令队列执行完成，等待 ${INTERVAL_TIME} 秒开始下一轮`);
+      console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
       clients[serialNo].isRestTime = true;
       setTimeout(() => {
         clients[serialNo].isRestTime = false;
@@ -127,25 +131,23 @@ server.listen(8124, () => {
   console.log('服务器已启动');
 });
 
-setTimeout(() => {
-  const userCmd = cmdConfig.setTimeMode.encoder({
-    upTime: 100, // 上升时间 单位秒
-    continueTime: 110, // 续流时间
-    closeTime: 12, // 关井时间
-    targetTime: 13, // 目标时间
-    targetTimeRange: 15, // 目标时间范围
-    minOpenWell: 122, // 最小开井时间
-    maxOpenWell: 1222, // 最大开井时间
-    minCloseWell: 12, // 最小关井时间
-    maxCloseWell: 12, // 最大关井时间
-    unArrivedCloseWell: 123, // 未到达关井时间
-    continueIncrease: 123, // 续流增加时间
-    continueDecrease: 12, // 续流减少时间
-    closeWellIncrease: 23, // 关井增加时间
-    closeWellDecrease: 24, // 关井减少时间
+let i = 40;
+setInterval(() => {
+  const cmd = cmdConfig.setIntervalMode.encoder({
+    closeWell: i,
+    openWell: i + 10,
   });
+  i += 10;
   if (clients['0001']) {
     console.log('测试发送配置命令');
-    clients['0001'].userCmd.push(userCmd);
+    clients['0001'].userCmd.push({
+      name: 'setIntervalMode', // 配置时间模式
+      cmd,
+      decoder: cmdConfig.setIntervalMode.decoder,
+    });
+    clients['0001'].userCmd.push(cmdConfig.openWell);
+    setTimeout(() => {
+      clients['0001'].userCmd.push(cmdConfig.closeWell);
+    }, 2000);
   }
-}, 8000);
+}, 5000);

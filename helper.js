@@ -80,6 +80,7 @@ function systemStatus(msg) {
   // 动作剩余时间 单位秒
   const countdownTime = parseInt(data.slice(40, 48), 16);
   return {
+    time: new Date().toLocaleString(),
     lidPressure,
     oilPressure,
     wellStatus,
@@ -92,8 +93,8 @@ function systemStatus(msg) {
 // type and data定义
 // 1—系统启动(数据显示为 0);
 // 2—定值操作(数据显示为 0);
-// 3—电池电压异常;(数据位当时电池电压,需要除以10);
-// 4—太阳能电压异常(数据位当时太阳能电压,由于晚上无电压,则只有电压过高异常);
+// 3—电池电压异常;(数据为当时电池电压,需要除以10);
+// 4—太阳能电压异常(数据为当时太阳能电压,由于晚上无电压,则只有电压过高异常);
 // 5—显示异常(数据显示为 0);
 // 6—通讯口异常(数据显示为 0);
 // 7—动作事件(事件数据: 1 程序开井; 2 程序关井; 3 手动开井;
@@ -116,18 +117,7 @@ function systemEvent(msg) {
 function actionLog(msg) {
   const data = checkHeader(msg);
   if (!data) return false;
-  // 130a 1715 1204 // 开井时间
-  // 0000 // 开井套压
-  // 0000 // 开井油压
-  // 0000 0000 0000// 柱塞到达时间
-  // 0000 // 柱塞到达套压
-  // 0000 // 柱塞到达油压
-  // 130a 1715 1303 // 关井到达时间
-  // 0000 // 关井套压
-  // 0000 // 关井油压
-  // 0000 003b
-  // 0000 003b
-  // 0000 001e
+
   const time = getTime(data);
   // 开井套压
   const openWellLidPressure = parseInt(data.slice(12, 16), 16) / 100;
@@ -217,6 +207,11 @@ function setTimeMode(msg) {
   return msg.includes('1000c9001c0070');
 }
 
+function setIntervalMode(msg) {
+  console.log('setIntervalMode msg:', msg);
+  return msg.includes('1000640008');
+}
+
 // 配置时间模式
 function getTimeModeData(timeModeParam) {
   const {
@@ -256,8 +251,27 @@ function getTimeModeData(timeModeParam) {
 
   const data = parmArr.reduce((r, s) => r + s.toString(16).padStart(8, '0'), '');
   const dataLen = data.length.toString(16).padStart(2, '0');
-  const paramLen = (parmArr.length * 2).toString(16).padStart(4, '0');
-  return `1000c9${paramLen}${dataLen}${data}`;
+  const paramLen = (parmArr.length * 4).toString(16).padStart(4, '0');
+  return `1000c8${paramLen}${dataLen}${data}`;
+}
+
+function getIntervalMode(intervalModeParam) {
+  const {
+    // eslint-disable-next-line no-shadow
+    openWell = 0, // 开井时间
+    // eslint-disable-next-line no-shadow
+    closeWell = 0, // 关井时间
+  } = intervalModeParam;
+
+  const parmArr = [
+    openWell,
+    closeWell,
+  ];
+
+  const data = parmArr.reduce((r, s) => r + s.toString(16).padStart(8, '0'), '');
+  const dataLen = data.length.toString(16).padStart(2, '0');
+  const paramLen = (parmArr.length * 4).toString(16).padStart(4, '0');
+  return `100064${paramLen}${dataLen}${data}`;
 }
 
 module.exports = {
@@ -274,4 +288,6 @@ module.exports = {
   deleteAlarm,
   setTimeMode,
   getTimeModeData,
+  setIntervalMode,
+  getIntervalMode,
 };

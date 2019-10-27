@@ -12,7 +12,7 @@
 
 const helper = require('./helper');
 
-const INTERVAL_TIME = 10000;
+const INTERVAL_TIME = 6000;
 
 const cmdConfig = {
   openWell: { // 开井
@@ -71,11 +71,17 @@ const cmdConfig = {
     decoder: helper.deleteAlarm,
   },
   setTimeMode: {
-    name: 'setTimeMode', // 配置时间模式
+    name: 'setTimeMode', // 配置时间优化模式
     cmd: '',
     decoder: helper.setTimeMode,
     encoder: helper.getTimeModeData,
   },
+  setIntervalMode: {
+    name: 'intervalMode', // 纯时间模式->间隙模式
+    cmd: '',
+    decoder: helper.setIntervalMode,
+    encoder: helper.getIntervalMode,
+  }
 };
 
 // 定时发送命令的队列
