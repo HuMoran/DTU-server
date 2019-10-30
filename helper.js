@@ -154,7 +154,7 @@ function actionLog(msg) {
     upTimestamp,
     openWellTimestamp,
     closeWellTimestamp,
-  }
+  };
 }
 
 function scheduleLog(msg) {
@@ -208,7 +208,6 @@ function setTimeMode(msg) {
 }
 
 function setIntervalMode(msg) {
-  console.log('setIntervalMode msg:', msg);
   return msg.includes('1000640008');
 }
 

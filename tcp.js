@@ -1,7 +1,7 @@
 /* eslint-disable no-console */
 /*
  * File: /tcp.js
- * Project: iot-client
+ * Project: dtu-server
  * Description:
  * Created By: Tao.Hu 2019-10-04
  * -----
@@ -14,6 +14,7 @@
 const net = require('net');
 const { addCrc16, getNextCmd } = require('./utils');
 const { cmdConfig, CMD_QUEUE, INTERVAL_TIME } = require('./config');
+const { sendBroadcastMsg } = require('./ws');
 
 const clients = {
   // '0001': { // 0001 = serialNo
@@ -35,119 +36,144 @@ function decodeClientHeader(msg) {
   return { channel, devId, serialNo };
 }
 
-const server = net.createServer();
-server.on('connection', (client) => {
-  console.log('new connection:', client.remoteAddress);
-  let isNewClient = true;
-  let serialNo;
-  let devId;
-  let curCmd;
-  let sendCmd;
-  let userCmd;
+function sendQueueCmd(serialNo, client) {
+  // 先取用户命令队列，如果没有，再取轮询命令队列
+  const userCmd = clients[serialNo].userCmd.shift();
+  const { curCmd } = clients[serialNo];
+  const sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
+  clients[serialNo].sendCmd = sendCmd;
+  clients[serialNo].curCmd = userCmd ? curCmd : sendCmd;
+  const cmdBuf = addCrc16(`${clients[serialNo].devId}${sendCmd.cmd}`);
+  const ret = client.write(cmdBuf);
+  if (!ret) {
+    console.error(`[${serialNo}] | send client cmd error. [${cmdBuf.toString('hex')}]`);
+  }
+}
 
-  client.on('data', (buf) => {
-    const msg = buf.toString('hex');
-    console.debug('****client msg:', msg);
-    if (isNewClient) { // 新客户端，解析消息头，获取设备信息
-      const clientInfo = decodeClientHeader(msg);
-      if (!clientInfo) {
-        console.error('client auth failed:', msg, client.remoteAddress);
-        client.destroy();
+function doNewClientMsg(buf, client) {
+  const msg = buf.toString('hex');
+  const clientInfo = decodeClientHeader(msg);
+  if (!clientInfo) {
+    console.error('client auth failed:', msg, client.remoteAddress);
+    return '';
+  }
+  console.log('认证成功：', client.remoteAddress);
+  clients[clientInfo.serialNo] = {
+    ...clientInfo,
+    ip: client.remoteAddress,
+    userCmd: [],
+    sendCmd: {},
+    curCmd: {},
+    isRestTime: false,
+    socket: client,
+  };
+  return clientInfo.serialNo;
+}
+
+function doDeviceMsg(buf, serialNo) {
+  const msg = buf.toString('hex');
+  // 休息时间，不处理轮询消息，TODO: 只处理用户命令消息
+  if (clients[serialNo].isRestTime) {
+    console.log(`[${serialNo}] | client rest time, ignore msg.[${msg}]`);
+    return;
+  }
+
+  // 解析消息
+  const { sendCmd } = clients[serialNo];
+  const result = sendCmd.decoder(msg);
+  console.log(`[${serialNo}] | cmd name: ${sendCmd.name}`);
+  console.log(`[${serialNo}] |return: ${JSON.stringify(result)}`);
+  // 广播消息
+  sendBroadcastMsg({ type: sendCmd.name, data: { serialNo, ...result } });
+}
+
+function initTcpServer() {
+  const server = net.createServer();
+  server.on('connection', (client) => {
+    console.log('new connection:', client.remoteAddress);
+    let isNewClient = true;
+    let serialNo;
+
+    client.on('data', (buf) => {
+      if (isNewClient) {
+        serialNo = doNewClientMsg(buf, client);
+        if (!serialNo) {
+          client.destroy();
+          return;
+        }
+        isNewClient = false;
         return;
       }
-      console.log('认证成功：', client.remoteAddress);
-      isNewClient = false;
-      serialNo = clientInfo.serialNo;
-      devId = clientInfo.devId;
-      clients[clientInfo.serialNo] = {
-        ...clientInfo,
-        ip: client.remoteAddress,
-        userCmd: [],
-        isRestTime: false,
-        socket: client,
-      };
-      // 新Client，取轮询命令队列
-      sendCmd = getNextCmd();
-      curCmd = sendCmd;
-      const cmdBuf = addCrc16(`${devId}${sendCmd.cmd}`);
-      const ret = client.write(cmdBuf);
-      if (!ret) {
-        console.error('cmd send error:', cmdBuf.toString('hex'), ret);
+      doDeviceMsg(buf, serialNo);
+      // 判断是否轮询完一轮，如果是，则休息一段时间开始下一轮
+      if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length].cmd) {
+        console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
+        clients[serialNo].isRestTime = true;
+        setTimeout(() => {
+          clients[serialNo].isRestTime = false;
+          sendQueueCmd(serialNo, client);
+        }, INTERVAL_TIME);
       }
-      return;
-    }
-
-    // 休息时间，不处理消息
-    if (clients[serialNo].isRestTime) {
-      console.log(`[${serialNo}] | client rest time, ignore msg.[${msg}]`);
-      return;
-    }
-
-    // 解析消息
-    const result = sendCmd.decoder(msg);
-    // TODO: seng msg to others;
-    console.log(`[${serialNo}] | cmd name: ${sendCmd.name}`);
-    console.log(`[${serialNo}] |return: ${JSON.stringify(result)}`);
-
-    // 下一轮消息发送，先取用户命令队列，如果没有，再取轮询命令队列
-    userCmd = clients[serialNo].userCmd.shift();
-    sendCmd = userCmd || getNextCmd(curCmd && curCmd.cmd);
-    curCmd = userCmd ? curCmd : sendCmd;
-    const cmdBuf = addCrc16(`${devId}${sendCmd.cmd}`);
-    console.log('======send msg:', cmdBuf.toString('hex'));
-
-    if (sendCmd.cmd === CMD_QUEUE[0].cmd) {
-      console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
-      clients[serialNo].isRestTime = true;
-      setTimeout(() => {
-        clients[serialNo].isRestTime = false;
-        const ret = client.write(cmdBuf);
-        if (!ret) {
-          console.error(`[${serialNo}] | send client cmd error. [${cmdBuf.toString('hex')}]`);
-        }
-      }, INTERVAL_TIME);
-    } else {
-      const ret = client.write(cmdBuf);
-      if (!ret) {
-        console.error(`[${serialNo}] | send client cmd error. [${cmdBuf.toString('hex')}]`);
-      }
-    }
-  });
-
-  client.on('close', () => {
-    console.error(`[${serialNo}] | client close`);
-    delete clients[serialNo];
-  });
-  client.on('error', (error) => {
-    delete clients[serialNo];
-    console.error(`[${serialNo}] | client error.[${error}]`);
-  });
-});
-
-server.on('error', (err) => {
-  throw err;
-});
-server.listen(8124, () => {
-  console.log('服务器已启动');
-});
-
-let i = 40;
-setInterval(() => {
-  const cmd = cmdConfig.setIntervalMode.encoder({
-    closeWell: i,
-    openWell: i + 10,
-  });
-  i += 10;
-  if (clients['0001']) {
-    console.log('测试发送配置命令');
-    clients['0001'].userCmd.push({
-      name: 'setIntervalMode', // 配置时间模式
-      cmd,
-      decoder: cmdConfig.setIntervalMode.decoder,
     });
-    clients['0001'].userCmd.push(cmdConfig.openWell);
-    setTimeout(() => {
-      clients['0001'].userCmd.push(cmdConfig.closeWell);
-    }, 2000);
+
+    client.on('close', () => {
+      console.error(`[${serialNo}] | client close`);
+      delete clients[serialNo];
+    });
+    client.on('error', (error) => {
+      delete clients[serialNo];
+      console.error(`[${serialNo}] | client error.[${error}]`);
+    });
+  });
+
+  server.on('error', (err) => {
+    throw err;
+  });
+  server.listen(8124, () => {
+    console.log('服务器已启动');
+  });
+}
+
+async function doCmdMsg(ctx) {
+  let { serialNo } = ctx.request.body;
+  const { cmdName, data } = ctx.request.body;
+
+  if (serialNo) {
+    serialNo = serialNo.padStart(4, '0');
   }
-}, 5000);
+  if (clients[serialNo]) {
+    const cmd = cmdConfig[cmdName].encoder(data);
+    clients[serialNo].userCmd.push({
+      name: cmdName, // 配置时间模式
+      cmd,
+      decoder: cmdConfig[cmdName].decoder,
+    });
+    ctx.body = { code: 0, msg: '' };
+    return;
+  }
+  ctx.body = { code: 1, msg: `device[${serialNo}] offline` };
+}
+
+module.exports = { doCmdMsg, initTcpServer };
+
+
+// let i = 40;
+// setInterval(() => {
+//   const cmd = cmdConfig.setIntervalMode.encoder({
+//     closeWell: i,
+//     openWell: i + 10,
+//   });
+//   i += 10;
+//   if (clients['0001']) {
+//     console.log('测试发送配置命令');
+//     clients['0001'].userCmd.push({
+//       name: 'setIntervalMode', // 配置时间模式
+//       cmd,
+//       decoder: cmdConfig.setIntervalMode.decoder,
+//     });
+//     clients['0001'].userCmd.push(cmdConfig.openWell);
+//     setTimeout(() => {
+//       clients['0001'].userCmd.push(cmdConfig.closeWell);
+//     }, 2000);
+//   }
+// }, 5000);
