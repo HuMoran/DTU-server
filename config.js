@@ -81,7 +81,7 @@ const cmdConfig = {
     cmd: '',
     decoder: helper.setIntervalMode,
     encoder: helper.getIntervalMode,
-  }
+  },
 };
 
 // 定时发送命令的队列

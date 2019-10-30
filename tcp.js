@@ -84,7 +84,9 @@ function doDeviceMsg(buf, serialNo) {
   console.log(`[${serialNo}] | cmd name: ${sendCmd.name}`);
   console.log(`[${serialNo}] |return: ${JSON.stringify(result)}`);
   // 广播消息
-  sendBroadcastMsg({ type: sendCmd.name, data: { serialNo, ...result } });
+  if (result && result !== true) {
+    sendBroadcastMsg({ type: sendCmd.name, data: { serialNo, ...result } });
+  }
 }
 
 function initTcpServer() {
@@ -102,18 +104,21 @@ function initTcpServer() {
           return;
         }
         isNewClient = false;
+        sendQueueCmd(serialNo, client);
         return;
       }
       doDeviceMsg(buf, serialNo);
       // 判断是否轮询完一轮，如果是，则休息一段时间开始下一轮
-      if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length].cmd) {
+      if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length - 1].cmd) {
         console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
         clients[serialNo].isRestTime = true;
         setTimeout(() => {
           clients[serialNo].isRestTime = false;
           sendQueueCmd(serialNo, client);
         }, INTERVAL_TIME);
+        return;
       }
+      sendQueueCmd(serialNo, client);
     });
 
     client.on('close', () => {
@@ -136,17 +141,27 @@ function initTcpServer() {
 
 async function doCmdMsg(ctx) {
   let { serialNo } = ctx.request.body;
-  const { cmdName, data } = ctx.request.body;
+  const { action, data } = ctx.request.body;
+  console.log('=========:', ctx.request.body);
 
   if (serialNo) {
     serialNo = serialNo.padStart(4, '0');
   }
-  if (clients[serialNo]) {
-    const cmd = cmdConfig[cmdName].encoder(data);
+  if (clients[serialNo] && data) {
+    const cmd = cmdConfig[action].encoder(data);
     clients[serialNo].userCmd.push({
-      name: cmdName, // 配置时间模式
+      name: action, // 配置时间模式
       cmd,
-      decoder: cmdConfig[cmdName].decoder,
+      decoder: cmdConfig[action].decoder,
+    });
+    ctx.body = { code: 0, msg: '' };
+    return;
+  }
+  if (clients[serialNo]) {
+    clients[serialNo].userCmd.push({
+      name: action, // 配置时间模式
+      cmd: cmdConfig[action].cmd,
+      decoder: cmdConfig[action].decoder,
     });
     ctx.body = { code: 0, msg: '' };
     return;
