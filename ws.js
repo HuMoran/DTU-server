@@ -1,3 +1,4 @@
+/* eslint-disable no-console */
 const WebSocket = require('ws');
 
 let wss;
