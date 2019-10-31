@@ -36,6 +36,16 @@ function decodeClientHeader(msg) {
   return { channel, devId, serialNo };
 }
 
+function writeBufToClient(serialNo, client, buf, count = 0) {
+  if (count >= 3) return false;
+  const ret = client.write(buf);
+  if (!ret) {
+    console.error(`[${serialNo}] | send client cmd [${buf.toString('hex')}] failed. try again.`);
+    if (count < 3) setTimeout(() => writeBufToClient(serialNo, client, buf, count + 1), 1000);
+  }
+  return true;
+}
+
 function sendQueueCmd(serialNo, client) {
   // 先取用户命令队列，如果没有，再取轮询命令队列
   const userCmd = clients[serialNo].userCmd.shift();
@@ -44,9 +54,10 @@ function sendQueueCmd(serialNo, client) {
   clients[serialNo].sendCmd = sendCmd;
   clients[serialNo].curCmd = userCmd ? curCmd : sendCmd;
   const cmdBuf = addCrc16(`${clients[serialNo].devId}${sendCmd.cmd}`);
-  const ret = client.write(cmdBuf);
+  const ret = writeBufToClient(serialNo, client, cmdBuf);
   if (!ret) {
-    console.error(`[${serialNo}] | send client cmd error. [${cmdBuf.toString('hex')}]`);
+    console.error(`[${serialNo}] | send client cmd [${cmdBuf.toString('hex')}] failed, skip this cmd.`);
+    sendQueueCmd(serialNo, client);
   }
 }
 
@@ -95,8 +106,10 @@ function initTcpServer() {
     console.log('new connection:', client.remoteAddress);
     let isNewClient = true;
     let serialNo;
+    let timer;
 
-    client.on('data', (buf) => {
+    client.on('data', function doClientMsg(buf) {
+      if (timer) clearTimeout(timer);
       if (isNewClient) {
         serialNo = doNewClientMsg(buf, client);
         if (!serialNo) {
@@ -107,9 +120,15 @@ function initTcpServer() {
         sendQueueCmd(serialNo, client);
         return;
       }
-      doDeviceMsg(buf, serialNo);
+      if (buf) {
+        doDeviceMsg(buf, serialNo);
+      }
       // 判断是否轮询完一轮，如果是，则休息一段时间开始下一轮
       if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length - 1].cmd) {
+        timer = setTimeout(() => {
+          console.error(`[${serialNo}] | client return msg timeout.`);
+          doClientMsg();
+        }, 5000 + INTERVAL_TIME);
         console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
         clients[serialNo].isRestTime = true;
         setTimeout(() => {
@@ -118,6 +137,10 @@ function initTcpServer() {
         }, INTERVAL_TIME);
         return;
       }
+      timer = setTimeout(() => {
+        console.error(`[${serialNo}] | client return msg timeout.`);
+        doClientMsg();
+      }, 5000);
       sendQueueCmd(serialNo, client);
     });
 
@@ -142,8 +165,6 @@ function initTcpServer() {
 async function doCmdMsg(ctx) {
   let { serialNo } = ctx.request.body;
   const { action, data } = ctx.request.body;
-  console.log('=========:', ctx.request.body);
-
   if (serialNo) {
     serialNo = serialNo.padStart(4, '0');
   }
@@ -170,25 +191,3 @@ async function doCmdMsg(ctx) {
 }
 
 module.exports = { doCmdMsg, initTcpServer };
-
-
-// let i = 40;
-// setInterval(() => {
-//   const cmd = cmdConfig.setIntervalMode.encoder({
-//     closeWell: i,
-//     openWell: i + 10,
-//   });
-//   i += 10;
-//   if (clients['0001']) {
-//     console.log('测试发送配置命令');
-//     clients['0001'].userCmd.push({
-//       name: 'setIntervalMode', // 配置时间模式
-//       cmd,
-//       decoder: cmdConfig.setIntervalMode.decoder,
-//     });
-//     clients['0001'].userCmd.push(cmdConfig.openWell);
-//     setTimeout(() => {
-//       clients['0001'].userCmd.push(cmdConfig.closeWell);
-//     }, 2000);
-//   }
-// }, 5000);
