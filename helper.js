@@ -9,16 +9,17 @@
  * -----
  * Copyright (c) 2019 Kideasoft Tech Co.,Ltd
  */
+const moment = require('moment');
 
 function openWell(msg) {
   const devId = msg.slice(0, 2);
   const funCode = msg.slice(2, 4);
-  const addr = msg.slice(4, 6);
-  const data = msg.slice(6, 8);
+  const addr = msg.slice(4, 8);
+  const data = msg.slice(8, 12);
   if (!devId
     || funCode !== '05'
     || addr !== '0000'
-    || data !== 'FF00'
+    || data !== 'ff00'
   ) {
     return false;
   }
@@ -28,8 +29,8 @@ function openWell(msg) {
 function closeWell(msg) {
   const devId = msg.slice(0, 2);
   const funCode = msg.slice(2, 4);
-  const addr = msg.slice(4, 6);
-  const data = msg.slice(6, 8);
+  const addr = msg.slice(4, 8);
+  const data = msg.slice(8, 12);
   if (!devId
     || funCode !== '05'
     || addr !== '0000'
@@ -80,7 +81,7 @@ function systemStatus(msg) {
   // 动作剩余时间 单位秒
   const countdownTime = parseInt(data.slice(40, 48), 16);
   return {
-    time: new Date().toLocaleString(),
+    time: moment().format('YYYY-MM-DD HH:mm:ss'),
     lidPressure,
     oilPressure,
     wellStatus,
