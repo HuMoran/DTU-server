@@ -12,7 +12,7 @@
 
 const helper = require('./helper');
 
-const INTERVAL_TIME = 6000;
+const INTERVAL_TIME = 20000;
 
 const cmdConfig = {
   openWell: { // 开井

@@ -16,6 +16,9 @@ const { addCrc16, getNextCmd } = require('./utils');
 const { cmdConfig, CMD_QUEUE, INTERVAL_TIME } = require('./config');
 const { sendBroadcastMsg } = require('./ws');
 
+const CMD_TIMEOUT = 5000;
+const TCP_PORT = 8124;
+
 const clients = {
   // '0001': { // 0001 = serialNo
   //   devId: '01', // 01->ff
@@ -46,7 +49,19 @@ function writeBufToClient(serialNo, client, buf, count = 0) {
   return true;
 }
 
-function sendQueueCmd(serialNo, client) {
+function sendQueueCmd(serialNo, client, count = 1, cmd) {
+  if (count > 3) {
+    console.error(`[${serialNo}] | destory client.`);
+    client.destroy();
+    return;
+  }
+  if (cmd) {
+    const ret = writeBufToClient(serialNo, client, cmd);
+    if (!ret) {
+      console.error(`[${serialNo}] | send client cmd [${cmd.toString('hex')}] failed, try again[${count}].`);
+      sendQueueCmd(serialNo, client, count + 1, cmd);
+    }
+  }
   // 先取用户命令队列，如果没有，再取轮询命令队列
   const userCmd = clients[serialNo].userCmd.shift();
   const { curCmd } = clients[serialNo];
@@ -56,8 +71,8 @@ function sendQueueCmd(serialNo, client) {
   const cmdBuf = addCrc16(`${clients[serialNo].devId}${sendCmd.cmd}`);
   const ret = writeBufToClient(serialNo, client, cmdBuf);
   if (!ret) {
-    console.error(`[${serialNo}] | send client cmd [${cmdBuf.toString('hex')}] failed, skip this cmd.`);
-    sendQueueCmd(serialNo, client);
+    console.error(`[${serialNo}] | send client cmd [${cmdBuf.toString('hex')}] failed, try again[${count}].`);
+    sendQueueCmd(serialNo, client, count + 1, cmdBuf);
   }
 }
 
@@ -93,7 +108,7 @@ function doDeviceMsg(buf, serialNo) {
   const { sendCmd } = clients[serialNo];
   const result = sendCmd.decoder(msg);
   console.log(`[${serialNo}] | cmd name: ${sendCmd.name}`);
-  console.log(`[${serialNo}] |return: ${JSON.stringify(result)}`);
+  console.log(`[${serialNo}] | msg: ${JSON.stringify(result)}`);
   // 广播消息
   if (result && result !== true) {
     sendBroadcastMsg({ type: sendCmd.name, data: { serialNo, ...result } });
@@ -107,9 +122,11 @@ function initTcpServer() {
     let isNewClient = true;
     let serialNo;
     let timer;
+    let restTimer;
 
     client.on('data', function doClientMsg(buf) {
       if (timer) clearTimeout(timer);
+      if (!buf) console.log(`[${serialNo}] | 等待返回消息超时`);
       if (isNewClient) {
         serialNo = doNewClientMsg(buf, client);
         if (!serialNo) {
@@ -118,6 +135,7 @@ function initTcpServer() {
         }
         isNewClient = false;
         sendQueueCmd(serialNo, client);
+        timer = setTimeout(doClientMsg, CMD_TIMEOUT);
         return;
       }
       if (buf) {
@@ -125,39 +143,38 @@ function initTcpServer() {
       }
       // 判断是否轮询完一轮，如果是，则休息一段时间开始下一轮
       if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length - 1].cmd) {
-        timer = setTimeout(() => {
-          console.error(`[${serialNo}] | client return msg timeout.`);
-          doClientMsg();
-        }, 5000 + INTERVAL_TIME);
         console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
         clients[serialNo].isRestTime = true;
-        setTimeout(() => {
+        restTimer = setTimeout(() => {
+          if (!clients[serialNo]) return; // 定时完，可能客户端已经断开了
           clients[serialNo].isRestTime = false;
           sendQueueCmd(serialNo, client);
+          timer = setTimeout(doClientMsg, CMD_TIMEOUT);
         }, INTERVAL_TIME);
         return;
       }
-      timer = setTimeout(() => {
-        console.error(`[${serialNo}] | client return msg timeout.`);
-        doClientMsg();
-      }, 5000);
       sendQueueCmd(serialNo, client);
+      timer = setTimeout(doClientMsg, CMD_TIMEOUT);
     });
 
     client.on('close', () => {
       console.error(`[${serialNo}] | client close`);
       delete clients[serialNo];
+      if (timer) clearTimeout(timer);
+      if (restTimer) clearTimeout(restTimer);
     });
     client.on('error', (error) => {
-      delete clients[serialNo];
       console.error(`[${serialNo}] | client error.[${error}]`);
+      delete clients[serialNo];
+      if (timer) clearTimeout(timer);
+      if (restTimer) clearTimeout(restTimer);
     });
   });
 
   server.on('error', (err) => {
     throw err;
   });
-  server.listen(8124, () => {
+  server.listen(TCP_PORT, '0.0.0.0', () => {
     console.log('服务器已启动');
   });
 }
