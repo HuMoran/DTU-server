@@ -17,7 +17,7 @@ const { cmdConfig, CMD_QUEUE, INTERVAL_TIME } = require('./config');
 const { sendBroadcastMsg } = require('./ws');
 
 const CMD_TIMEOUT = 5000;
-const TCP_PORT = 8124;
+const TCP_PORT = 9000;
 
 const clients = {
   // '0001': { // 0001 = serialNo
@@ -122,20 +122,26 @@ function initTcpServer() {
     let isNewClient = true;
     let serialNo;
     let timer;
-    let restTimer;
+    let closing = false;
 
     client.on('data', function doClientMsg(buf) {
       if (timer) clearTimeout(timer);
-      if (!buf) console.log(`[${serialNo}] | 等待返回消息超时`);
+      if (closing) return;
+      if (!buf) console.log(`[${serialNo}] | 等待返回消息超时${clients[serialNo].sendCmd.cmd}`);
       if (isNewClient) {
         serialNo = doNewClientMsg(buf, client);
         if (!serialNo) {
-          client.destroy();
+          closing = true;
+          setTimeout(() => {
+            client.destroy();
+          }, 5000);
           return;
         }
         isNewClient = false;
-        sendQueueCmd(serialNo, client);
-        timer = setTimeout(doClientMsg, CMD_TIMEOUT);
+        setTimeout(() => {
+          sendQueueCmd(serialNo, client);
+          timer = setTimeout(doClientMsg, CMD_TIMEOUT);
+        }, 5000);
         return;
       }
       if (buf) {
@@ -145,8 +151,7 @@ function initTcpServer() {
       if (clients[serialNo].sendCmd.cmd === CMD_QUEUE[CMD_QUEUE.length - 1].cmd) {
         console.log(`[${serialNo}] | 命令队列执行完成，等待 ${INTERVAL_TIME} 毫秒开始下一轮`);
         clients[serialNo].isRestTime = true;
-        restTimer = setTimeout(() => {
-          if (!clients[serialNo]) return; // 定时完，可能客户端已经断开了
+        setTimeout(() => {
           clients[serialNo].isRestTime = false;
           sendQueueCmd(serialNo, client);
           timer = setTimeout(doClientMsg, CMD_TIMEOUT);
@@ -160,14 +165,10 @@ function initTcpServer() {
     client.on('close', () => {
       console.error(`[${serialNo}] | client close`);
       delete clients[serialNo];
-      if (timer) clearTimeout(timer);
-      if (restTimer) clearTimeout(restTimer);
     });
     client.on('error', (error) => {
-      console.error(`[${serialNo}] | client error.[${error}]`);
       delete clients[serialNo];
-      if (timer) clearTimeout(timer);
-      if (restTimer) clearTimeout(restTimer);
+      console.error(`[${serialNo}] | client error.[${error}]`);
     });
   });
 
