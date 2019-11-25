@@ -50,7 +50,7 @@
 ```js
 {
   serialNo: '0001', // 设备编号（唯一）
-  time: '2019-10-27 17:34:12', // 事件发生时间
+  time: '2019-10-27 17:34:12', // 事件发生时间 这是应该是开井时间
   openWellLidPressure: 2.43, // 开井套压
   openWellOilPressure: 3.34, // 开井油压
   plungerArrivalTime: '2019-10-27 17:34:12', // 柱塞到达时间

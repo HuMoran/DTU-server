@@ -98,6 +98,10 @@ function doNewClientMsg(buf, client) {
 
 function doDeviceMsg(buf, serialNo) {
   const msg = buf.toString('hex');
+  if (!clients[serialNo]) {
+    console.log(`[${serialNo}] | client offline, ignore msg.[${msg}]`);
+    return;
+  }
   // 休息时间，不处理轮询消息，TODO: 只处理用户命令消息
   if (clients[serialNo].isRestTime) {
     console.log(`[${serialNo}] | client rest time, ignore msg.[${msg}]`);
