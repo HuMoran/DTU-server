@@ -15,7 +15,7 @@
     "koa": "^2.11.0",
     "koa-bodyparser": "^4.2.1",
     "moment": "^2.24.0",
-    "ws": "^7.2.0"
+    "ws": "^7.4.6"
   },
   "devDependencies": {
     "@commitlint/cli": "^7.5.2",
